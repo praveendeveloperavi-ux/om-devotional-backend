@@ -37,6 +37,17 @@ router.get('/trustees/applications', getApplications);
 router.post('/trustees/apply', submitApplication);
 router.post('/trustees/review/:id', reviewApplication);
 
+// Database Status & Diagnostics
+router.get('/db-status', async (req, res) => {
+  try {
+    const { dbSyncService } = await import('../data/dbSync');
+    const stats = await dbSyncService.getDatabaseStats();
+    res.json({ success: true, data: stats });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Notifications
 router.get('/notifications', getNotifications);
 router.post('/notifications/:id/read', markRead);

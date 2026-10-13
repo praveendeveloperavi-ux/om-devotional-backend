@@ -1,5 +1,6 @@
 import { Deity, Temple, Video, TrusteeApplication, NotificationItem, User } from '../types';
 import { SEED_DEITIES, SEED_TEMPLES, SEED_VIDEOS, SEED_TRUSTEE_APPLICATIONS, SEED_NOTIFICATIONS } from './seedData';
+import { dbSyncService } from './dbSync';
 
 class DevotionalDataStore {
   private deities: Deity[] = [...SEED_DEITIES];
@@ -28,6 +29,31 @@ class DevotionalDataStore {
     }
   ];
 
+  // Hydration Setters (invoked by MongoDBSyncService)
+  setDeities(deities: Deity[]) {
+    if (deities && deities.length) this.deities = deities;
+  }
+
+  setTemples(temples: Temple[]) {
+    if (temples && temples.length) this.temples = temples;
+  }
+
+  setVideos(videos: Video[]) {
+    if (videos && videos.length) this.videos = videos;
+  }
+
+  setTrusteeApplications(apps: TrusteeApplication[]) {
+    if (apps && apps.length) this.trusteeApplications = apps;
+  }
+
+  setNotifications(notifs: NotificationItem[]) {
+    if (notifs && notifs.length) this.notifications = notifs;
+  }
+
+  setUsers(users: User[]) {
+    if (users && users.length) this.users = users;
+  }
+
   // Deities
   getDeities(): Deity[] {
     return this.deities;
@@ -46,6 +72,8 @@ class DevotionalDataStore {
     const temple = this.getTempleById(templeId);
     if (!temple) return null;
     temple.followersCount += 1;
+    // Persist to MongoDB
+    dbSyncService.persistFollowTemple(templeId);
     return { temple, isFollowed: true };
   }
 
@@ -89,6 +117,9 @@ class DevotionalDataStore {
     } else if (action === 'diya') {
       video.diyasLitCount += 1;
     }
+
+    // Persist to MongoDB
+    dbSyncService.persistVideoAction(videoId, action);
     return video;
   }
 
@@ -104,6 +135,9 @@ class DevotionalDataStore {
       commentsCount: 0
     };
     this.videos.unshift(newVideo);
+
+    // Persist to MongoDB
+    dbSyncService.persistVideo(newVideo);
 
     // Trigger notification
     this.addNotification({
@@ -130,6 +164,9 @@ class DevotionalDataStore {
       appliedAt: new Date().toISOString().split('T')[0]
     };
     this.trusteeApplications.unshift(newApp);
+
+    // Persist to MongoDB
+    dbSyncService.persistTrusteeApplication(newApp);
     return newApp;
   }
 
@@ -137,6 +174,9 @@ class DevotionalDataStore {
     const app = this.trusteeApplications.find(a => a.id === id);
     if (!app) return null;
     app.status = status;
+
+    // Persist to MongoDB
+    dbSyncService.persistTrusteeApplication(app);
 
     if (status === 'approved') {
       this.addNotification({
@@ -162,6 +202,9 @@ class DevotionalDataStore {
       isRead: false
     };
     this.notifications.unshift(notif);
+
+    // Persist to MongoDB
+    dbSyncService.persistNotification(notif);
     return notif;
   }
 
@@ -169,12 +212,19 @@ class DevotionalDataStore {
     const notif = this.notifications.find(n => n.id === id);
     if (!notif) return false;
     notif.isRead = true;
+
+    // Persist to MongoDB
+    dbSyncService.persistNotification(notif);
     return true;
   }
 
   // Users & Auth
   findUserByEmail(email: string): User | undefined {
     return this.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  }
+
+  findUserById(id: string): User | undefined {
+    return this.users.find(u => u.id === id);
   }
 
   createUser(userData: { name: string; email: string; role?: User['role']; phone?: string }): User {
@@ -189,6 +239,9 @@ class DevotionalDataStore {
       createdAt: new Date().toISOString()
     };
     this.users.push(newUser);
+
+    // Persist to MongoDB
+    dbSyncService.persistUser(newUser);
     return newUser;
   }
 
@@ -201,6 +254,9 @@ class DevotionalDataStore {
     } else {
       user.savedVideos.push(videoId);
     }
+
+    // Persist to MongoDB
+    dbSyncService.persistSavedVideos(userId, user.savedVideos);
     return user.savedVideos;
   }
 }

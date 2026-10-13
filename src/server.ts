@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import path from 'path';
 import apiRouter from './routes/api';
+import { dbSyncService } from './data/dbSync';
 
 dotenv.config();
 
@@ -32,19 +33,26 @@ app.get('/', (req, res) => {
     platform: 'Om Devotional Mobile & Web Backend API',
     version: '1.0.0',
     documentation: '/api/v1',
+    mongoConnected: dbSyncService.getIsConnected(),
     endpoints: {
       deities: '/api/v1/deities',
       videos: '/api/v1/videos',
       temples: '/api/v1/temples',
       auth: '/api/v1/auth',
       trustees: '/api/v1/trustees',
-      notifications: '/api/v1/notifications'
+      notifications: '/api/v1/notifications',
+      dbStatus: '/api/v1/db-status'
     }
   });
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  const stats = await dbSyncService.getDatabaseStats();
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    database: stats
+  });
 });
 
 // Mount API routes
@@ -56,12 +64,22 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ success: false, message: err.message || 'Internal Server Error' });
 });
 
-// MongoDB Connection (graceful fallback)
+// MongoDB Connection & Automatic Data Sync
 if (MONGODB_URI) {
+  console.log('🕉️ Connecting to MongoDB Atlas cluster...');
   mongoose
-    .connect(MONGODB_URI)
-    .then(() => console.log('🕉️ Connected to MongoDB Atlas / Local successfully'))
-    .catch(err => console.warn('⚠️ MongoDB connection warning (falling back to in-memory store):', err.message));
+    .connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000
+    })
+    .then(async () => {
+      console.log('🕉️ Connected to MongoDB Atlas successfully!');
+      dbSyncService.setConnected(true);
+      await dbSyncService.initializeDatabase();
+    })
+    .catch(err => {
+      console.warn('⚠️ MongoDB connection warning (falling back to in-memory store):', err.message);
+      dbSyncService.setConnected(false);
+    });
 } else {
   console.log('🕉️ Running with verified in-memory devotional data store (No MONGODB_URI specified).');
 }
@@ -75,6 +93,7 @@ app.listen(PORT, () => {
   • Port:        ${PORT}
   • URL:         http://localhost:${PORT}
   • API Base:    http://localhost:${PORT}/api/v1
+  • DB Status:   http://localhost:${PORT}/api/v1/db-status
   • Health Check: http://localhost:${PORT}/health
 ======================================================
   `);
